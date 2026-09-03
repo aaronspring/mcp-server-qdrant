@@ -99,6 +99,9 @@ class QdrantSettings(BaseSettings):
     sparse_embedding_name: str = Field(
         default="sparse", validation_alias="SPARSE_EMBEDDING_NAME"
     )
+    sparse_embedding_model: str | None = Field(
+        default=None, validation_alias="SPARSE_EMBEDDING_MODEL"
+    )
 
     filterable_fields: list[FilterableField] | None = Field(default=None)
 

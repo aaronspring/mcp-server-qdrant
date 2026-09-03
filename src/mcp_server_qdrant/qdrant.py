@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from qdrant_client import AsyncQdrantClient, models
 
 from mcp_server_qdrant.embeddings.base import EmbeddingProvider
+from mcp_server_qdrant.embeddings.sparse import resolve_sparse_model_name
 from mcp_server_qdrant.settings import METADATA_PATH
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,7 @@ class QdrantConnector:
         qdrant_local_path: str | None = None,
         field_indexes: dict[str, models.PayloadSchemaType] | None = None,
         sparse_embedding_name: str = "sparse",
+        sparse_embedding_model: str | None = None,
     ):
         self._qdrant_url = qdrant_url.rstrip("/") if qdrant_url else None
         self._qdrant_api_key = qdrant_api_key
@@ -53,6 +55,11 @@ class QdrantConnector:
         )
         self._field_indexes = field_indexes
         self._sparse_embedding_name = sparse_embedding_name
+        # The query has to be embedded with the same sparse model the collection was
+        # built with. Fall back to deriving it from the sparse vector name.
+        self._sparse_embedding_model = (
+            sparse_embedding_model or resolve_sparse_model_name(sparse_embedding_name)
+        )
 
     async def get_collection_names(self) -> list[str]:
         """
@@ -174,6 +181,18 @@ class QdrantConnector:
         # For now, we'll assume dense vector exists and fallback gracefully if sparse doesn't
         vector_name = self._embedding_provider.get_vector_name()
 
+        if self._sparse_embedding_model is None:
+            logger.warning(
+                f"No sparse embedding model configured for vector "
+                f"{self._sparse_embedding_name!r}, using dense-only search"
+            )
+            return await self.search(
+                query,
+                collection_name=collection_name,
+                limit=final_limit,
+                query_filter=query_filter,
+            )
+
         try:
             # Build prefetch queries for hybrid search
             prefetch_queries = []
@@ -188,28 +207,18 @@ class QdrantConnector:
                 )
             )
 
-            # Sparse vector search (keyword matching)
-            # Note: This assumes sparse vectors are configured in the collection
-            # In practice, you'd want to check collection config first
-            try:
-                prefetch_queries.append(
-                    models.Prefetch(
-                        query=models.Document(text=query, model="bm25"),
-                        using=self._sparse_embedding_name,
-                        limit=sparse_limit,
-                    )
+            # Sparse vector search (keyword matching). The model has to match the one
+            # the collection's sparse vector was built with, otherwise Qdrant cannot
+            # embed the query and the whole request fails.
+            prefetch_queries.append(
+                models.Prefetch(
+                    query=models.Document(
+                        text=query, model=self._sparse_embedding_model
+                    ),
+                    using=self._sparse_embedding_name,
+                    limit=sparse_limit,
                 )
-            except Exception:
-                # If sparse vectors aren't available, fallback to dense-only search
-                logger.warning(
-                    f"Sparse vectors not available in collection {collection_name}, using dense-only search"
-                )
-                return await self.search(
-                    query,
-                    collection_name=collection_name,
-                    limit=final_limit,
-                    query_filter=query_filter,
-                )
+            )
 
             # Execute hybrid search with fusion
             fusion_type = (

@@ -73,6 +73,7 @@ class QdrantMCPServer(FastMCP):
             qdrant_settings.local_path,
             make_indexes(qdrant_settings.filterable_fields_dict()),
             qdrant_settings.sparse_embedding_name,
+            qdrant_settings.sparse_embedding_model,
         )
 
         super().__init__(name=name, instructions=instructions, **settings)

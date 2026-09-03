@@ -61,8 +61,17 @@ The configuration of the server is done using environment variables:
 | `TOOL_FIND_DESCRIPTION`  | Custom description for the find tool                                | See default in [`settings.py`](src/mcp_server_qdrant/settings.py) |
 | `TOOL_HYBRID_FIND_DESCRIPTION` | Custom description for the hybrid find tool                   | See default in [`settings.py`](src/mcp_server_qdrant/settings.py) |
 | `SPARSE_EMBEDDING_NAME`  | Name of the sparse vector in the Qdrant collection for hybrid search | `sparse`                                                          |
+| `SPARSE_EMBEDDING_MODEL` | FastEmbed sparse model used to embed the query for hybrid search    | Derived from `SPARSE_EMBEDDING_NAME`                              |
 
 Note: You cannot provide both `QDRANT_URL` and `QDRANT_LOCAL_PATH` at the same time.
+
+Note: `SPARSE_EMBEDDING_NAME` is the *vector name* in the collection, while
+`SPARSE_EMBEDDING_MODEL` is the *FastEmbed model id* used to embed the query. The query
+must be embedded with the same model the collection was indexed with. Since FastEmbed
+names vectors `fast-<model>`, the model id is derived from the vector name by default
+(e.g. `fast-bm42-all-minilm-l6-v2-attentions` → `Qdrant/bm42-all-minilm-l6-v2-attentions`),
+so `SPARSE_EMBEDDING_MODEL` only needs setting for custom vector names. If no model can be
+resolved, `qdrant-hybrid-find` logs a warning and falls back to dense-only search.
 
 > [!IMPORTANT]
 > Command-line arguments are not supported anymore! Please use environment variables for all configuration.
